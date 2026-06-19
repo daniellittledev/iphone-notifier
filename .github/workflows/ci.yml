@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build server
+        run: dotnet build server/NotifyRelay.fsproj -c Release
+      - name: Test
+        run: dotnet test server.tests/NotifyRelay.Tests.fsproj -c Release
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bicep
+        run: |
+          curl -fsSL https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64 -o bicep
+          chmod +x bicep && sudo mv bicep /usr/local/bin/bicep
+      - name: Validate Bicep
+        run: bicep build infra/main.bicep --outfile /tmp/main.json

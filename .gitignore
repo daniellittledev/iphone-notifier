@@ -55,3 +55,17 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Azure Functions local settings & secrets
+server/local.settings.json
+infra/main.bicepparam
+*.p8
+*.azurewebsites.publishsettings
+
+# Xcode / generated iOS project
+ios/*.xcodeproj
+ios/*.xcworkspace
+ios/DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store
