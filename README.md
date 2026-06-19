@@ -44,6 +44,19 @@ cd server && dotnet build
 cd ../server.tests && dotnet test
 ```
 
+## CI/CD
+
+- **CI** (`.github/workflows/ci.yml`): on PRs/pushes, builds + tests the F#
+  backend and validates the Bicep.
+- **CD** (`.github/workflows/deploy.yml`): on push to `main`, deploys the infra
+  and publishes the Function app via Azure OIDC login. Configure these first:
+  - Secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
+    `APNS_KEY` (the `.p8` contents), `JWT_SIGNING_KEY`.
+  - Variables: `AZURE_RESOURCE_GROUP`, `AZURE_LOCATION`, `NAME_PREFIX`,
+    `APPLE_BUNDLE_ID`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_ENV`.
+  - The OIDC service principal needs Contributor on the resource group (it
+    creates a role assignment, so User Access Administrator / Owner is simplest).
+
 ## Status / not yet done
 
 - End-to-end push requires an Apple Developer account + real device (see setup).

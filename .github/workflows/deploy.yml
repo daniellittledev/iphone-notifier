@@ -1,0 +1,82 @@
+name: Deploy
+
+# Continuous deployment of the backend (infra + Function app) on push to main.
+# Requires these GitHub secrets:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID  (OIDC federated identity)
+#   APNS_KEY        (.p8 file contents)
+#   JWT_SIGNING_KEY (32+ random chars)
+# And these repository variables (Settings → Variables):
+#   AZURE_RESOURCE_GROUP, AZURE_LOCATION, NAME_PREFIX,
+#   APPLE_BUNDLE_ID, APNS_KEY_ID, APNS_TEAM_ID, APNS_ENV
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'server/**'
+      - 'infra/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build & publish Function app
+        run: dotnet publish server/NotifyRelay.fsproj -c Release -o ./publish
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure resource group
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az group create -n "${{ vars.AZURE_RESOURCE_GROUP }}" -l "${{ vars.AZURE_LOCATION }}" 1>/dev/null
+
+      - name: Deploy infrastructure
+        id: infra
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            outputs=$(az deployment group create \
+              -g "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              -f infra/main.bicep \
+              -p namePrefix="${{ vars.NAME_PREFIX }}" \
+                 appleBundleId="${{ vars.APPLE_BUNDLE_ID }}" \
+                 apnsKeyId="${{ vars.APNS_KEY_ID }}" \
+                 apnsTeamId="${{ vars.APNS_TEAM_ID }}" \
+                 apnsEnvironment="${{ vars.APNS_ENV }}" \
+                 apnsKey="${{ secrets.APNS_KEY }}" \
+                 jwtSigningKey="${{ secrets.JWT_SIGNING_KEY }}" \
+              --query properties.outputs -o json)
+            echo "functionAppName=$(echo "$outputs" | jq -r .functionAppName.value)" >> "$GITHUB_OUTPUT"
+            echo "baseUrl=$(echo "$outputs" | jq -r .functionBaseUrl.value)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Function code
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ steps.infra.outputs.functionAppName }}
+          package: ./publish
+
+      - name: Summary
+        run: echo "Deployed to ${{ steps.infra.outputs.baseUrl }}" >> "$GITHUB_STEP_SUMMARY"
